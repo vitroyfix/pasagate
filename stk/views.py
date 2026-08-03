@@ -9,6 +9,7 @@ from vault.permissions import IsMerchantOwner
 from stk.models import Transaction
 from stk.serializers import STKPushRequestSerializer
 from stk.services import daraja
+from billing.services import BillingService, InsufficientCreditsError
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +29,11 @@ class DashboardSTKPushView(APIView):
         serializer = STKPushRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
+
+        try:
+            BillingService.charge_for_push(merchant, checkout_request_id="pending")
+        except InsufficientCreditsError as e:
+            return Response({"error": str(e)}, status=402)
 
         callback_url = f"{settings.PUBLIC_BASE_URL}/api/stk/callback/"
 
@@ -65,7 +71,7 @@ class DashboardSTKPushView(APIView):
 
 class STKCallbackView(APIView):
     """POST /api/stk/callback/ — Safaricom hits this with the result of every push."""
-    permission_classes = [permissions.AllowAny]  # Safaricom can't send a JWT
+    permission_classes = [permissions.AllowAny]
 
     def post(self, request):
         body = request.data.get("Body", {}).get("stkCallback", {})
